@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <title>Suomi - Eesti (iPad Landscape + Scroll Bridge)</title>
+  <style>
+    :root{
+      --bg:#000;
+      --transition-fast:180ms ease;
+      --transition-med:420ms ease;
+      --transition-slow:800ms ease;
+
+      /* Hotspot geometry as % of the IMAGE (not viewport) */
+      --center-x:50; --center-y:50; --center-w:20; --center-h:35;
+      --switch-w:6;  --switch-h:25; --switch-gap:3;
+      --switch-y:50;
+
+      /* Eyes zone as % of the IMAGE */
+      --eyes-x:50; --eyes-y:42; --eyes-w:10; --eyes-h:15;
+      --pupil-move-scale:0.35;
+    }
+
+    *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    html, body { height:100%; overscroll-behavior: none; }
+    body{
+      margin:0; background:var(--bg); color:#fff; overflow:hidden;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+      -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+      user-select:none; -webkit-user-select:none;
+    }
+    ::selection{ background:transparent; }
+    :focus{ outline:none; }
+    img{ -webkit-user-drag:none; user-drag:none; user-select:none; -webkit-user-select:none; }
+
+    /* Stage */
+    #stage{
+      position:fixed; inset:0; display:grid; place-items:center;
+      pointer-events:none; z-index:1; transition:opacity 260ms ease;
+      background:#000;
+    }
+
+    /* All main images use CONTAIN so full frame is visible on iPad */
+    .img{
+      position:absolute; inset:0; width:100%; height:100%;
+      object-fit:contain; object-position:center;
+      pointer-events:none; will-change:opacity, transform;
+      transition:opacity 220ms ease;
+      background:transparent;
+    }
+
+    #pupils{
+      position:absolute; inset:0; width:100%; height:100%;
+      object-fit:contain; object-position:center;
+      pointer-events:none; opacity:0;
+      transition:transform 500ms ease, opacity var(--transition-med);
+      will-change:transform; z-index:5;
+      transform:translate(var(--pupil-offset-x,0px), var(--pupil-offset-y,0px));
+    }
+    #stein{ position:absolute; inset:0; opacity:0; transition:opacity var(--transition-med); pointer-events:none; z-index:4; object-fit:contain; object-position:center; }
+    #artifact{
+      position:fixed; top:50%; left:50%;
+      transform:translate(-50%,-50%) rotate(0deg);
+      transform-origin:50% 50%;
+      width:100%; height:100%; opacity:0;
+      transition:transform var(--transition-fast), opacity var(--transition-med), top var(--transition-slow);
+      pointer-events:none; z-index:3; object-fit:contain; object-position:center;
+    }
+
+    /* Text overlay */
+    #text-layer{ position:absolute; inset:0; z-index:6; pointer-events:none; }
+    #text-layer .text-img{
+      position:absolute; inset:0; width:100%; height:100%;
+      object-fit:contain; object-position:center;
+      opacity:0; transition:opacity var(--transition-med);
+    }
+
+    /* Hotspots — JS positions over the actual image box */
+    .hotspot{
+      position:fixed; z-index:10; pointer-events:auto; cursor:pointer;
+      background:transparent; border:none; outline:none;
+      touch-action:manipulation;
+    }
+    #hotadvance{ display:none !important; }
+
+    /* Overlay for Website 2 */
+    #overlay2{
+      position:fixed; inset:0; background:transparent;
+      opacity:0; pointer-events:none; z-index:20; transition:opacity 600ms ease;
+    }
+    #overlay2.active{ opacity:1; pointer-events:auto; }
+    #site2frame{ width:100%; height:100%; border:0; display:block; }
+
+    /* iPad landscape tweaks (bigger touch targets) */
+    @media (orientation: landscape) and (max-height: 900px){
+      .hotspot{ min-width: 36px; min-height: 36px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Website One -->
+  <div id="stage">
+    <img id="base" class="img" alt="scene" src="bild1.png" />
+    <img id="stein" class="img" alt="stein" src="stein1.png" />
+    <img id="artifact" class="img" alt="artifact" src="" />
+    <img id="pupils" alt="pupils" src="bild5.png" />
+    <div id="text-layer" aria-hidden="true"></div>
+  </div>
+
+  <!-- Hotspots (placed over the image content via JS) -->
+  <button id="hotswitch" class="hotspot" title="Lightswitch" aria-label="Lightswitch"></button>
+  <button id="hotcenter" class="hotspot" title="Center" aria-label="Center"></button>
+  <div id="hotadvance" class="hotspot" title="Advance"></div>
+
+  <div id="scroll-space"></div>
+
+  <!-- Website Two (isolated) -->
+  <div id="overlay2" aria-hidden="true">
+    <iframe id="site2frame" src="site2.html"></iframe>
+  </div>
+
+  <script>
+    /* ========= helpers ========= */
+    const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+    const byId = (id)=>document.getElementById(id);
+    const readVarNum = (name, fallback)=>{
+      const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      if (!raw) return fallback;
+      const n = parseFloat(raw.replace('%',''));
+      return Number.isFinite(n) ? n : fallback;
+    };
+
+    /* ========= refs ========= */
+    const stage = byId('stage');
+    const base = byId('base');
+    const pupils = byId('pupils');
+    const stein = byId('stein');
+    const artifact = byId('artifact');
+    const textLayer = byId('text-layer');
+
+    const hotSwitch = byId('hotswitch');
+    const hotCenter = byId('hotcenter');
+    const hotAdvance = byId('hotadvance');
+
+    const overlay2 = byId('overlay2');
+    const site2frame = byId('site2frame');
+    let overlayActive = false;
+
+    /* ========= rendered image rect (object-fit: contain) ========= */
+    function getImageContentRect(img){
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const iw = img.naturalWidth || 1920;
+      const ih = img.naturalHeight || 1080;
+      const scale = Math.min(vw/iw, vh/ih);
+      const w = iw * scale;
+      const h = ih * scale;
+      const left = (vw - w) / 2;
+      const top  = (vh - h) / 2;
+      return { left, top, w, h };
+    }
+
+    /* ========= hotspot layout relative to image ========= */
+    function placeHotspot(el, box, xPct, yPct, wPct, hPct){
+      const cx = box.left + (xPct/100)*box.w;
+      const cy = box.top  + (yPct/100)*box.h;
+      const ww = (wPct/100)*box.w;
+      const hh = (hPct/100)*box.h;
+      el.style.left   = `${cx}px`;
+      el.style.top    = `${cy}px`;
+      el.style.width  = `${ww}px`;
+      el.style.height = `${hh}px`;
+      el.style.transform = 'translate(-50%, -50%)';
+    }
+
+    function layoutHotspots(){
+      const box = getImageContentRect(base);
+
+      // Center
+      const cx = readVarNum('--center-x', 50);
+      const cy = readVarNum('--center-y', 50);
+      const cw = readVarNum('--center-w', 20);
+      const ch = readVarNum('--center-h', 35);
+
+      // Lightswitch at LEFT of center with a gap
+      const sw = readVarNum('--switch-w', 6);
+      const sh = readVarNum('--switch-h', 25);
+      const sg = readVarNum('--switch-gap', 3);
+      const sy = readVarNum('--switch-y', 50);
+      const sx = cx - ((cw * 0.5) + (sw * 0.5) + sg);
+
+      placeHotspot(hotCenter,  box, cx, cy, cw, ch);
+      placeHotspot(hotSwitch,  box, sx, sy, sw, sh);
+    }
+
+    ['load','resize','orientationchange'].forEach(evt=>{
+      window.addEventListener(evt, layoutHotspots, {passive:true});
+    });
+    base.addEventListener('load', layoutHotspots);
+
+    /* ========= overlay controls ========= */
+    function openOverlay(){
+      if (overlayActive) return;
+      overlayActive = true;
+      overlay2.classList.add('active');
+      stage.style.opacity = 0;
+      site2frame.contentWindow?.postMessage({type:'site2-reset'}, '*');
+      site2frame.focus?.();
+    }
+    function closeOverlay(){
+      if (!overlayActive) return;
+      overlayActive = false;
+      overlay2.classList.remove('active');
+      stage.style.opacity = 1;
+      site2frame.contentWindow?.postMessage({type:'site2-reset'}, '*');
+    }
+
+    /* ========= website one state (original flow) ========= */
+    const Phase = {
+      Bild1:'bild1', Bild2:'bild2', Bild3:'bild3', Bild4:'bild4',
+      ClickRotate:'click-rotate', ScrollSeq:'scroll-seq', Bild12:'bild12'
+    };
+    let phase = Phase.Bild1;
+
+    function setBase(src){ base.src = src; }
+    function setBaseWithFade(src, onVisible){
+      const cur = (base.currentSrc||base.src||'').split('/').pop();
+      if (cur === src){ stage.style.opacity = 1; onVisible && onVisible(); return; }
+      base.style.opacity = 0;
+      let done=false;
+      const finish = ()=>{
+        if(done) return; done=true;
+        requestAnimationFrame(()=>{ base.style.opacity=1; onVisible&&onVisible(); layoutHotspots(); });
+      };
+      const pre = new Image();
+      pre.onload = ()=>{ base.src = src; finish(); };
+      pre.onerror= ()=>{ base.src = src; finish(); };
+      pre.src = src;
+      setTimeout(()=>{ if(!done){ base.src = src; finish(); } }, 900);
+    }
+    function showPupils(b){ pupils.style.opacity = b?'1':'0'; }
+    function showStein(b){ stein.style.opacity = b?'1':'0'; }
+    function showArtifact(b){ artifact.style.opacity = b?'1':'0'; }
+    function setArtifact(src){ if(src) artifact.src = src; }
+    function setArtifactTransform(deg, translateYvh){
+      const tY = (translateYvh ?? 0);
+      artifact.style.transform = `translate(-50%, -50%) translateY(${tY}vh) rotate(${deg}deg)`;
+    }
+    function ensureTextEl(src){
+      let el = textLayer.querySelector(`img[data-key="${src}"]`);
+      if(!el){ el = document.createElement('img'); el.className='text-img'; el.dataset.key=src; el.alt=src; textLayer.appendChild(el); }
+      return el;
+    }
+    function showText(src){ const el = ensureTextEl(src); if(!el.getAttribute('src')) el.src = src; requestAnimationFrame(()=> el.style.opacity='1'); }
+    function hideText(src){
+      const el = textLayer.querySelector(`img[data-key="${src}"]`); if(!el) return;
+      el.style.opacity = '0';
+      const onEnd = (e)=>{ if(e.propertyName==='opacity'){ el.removeEventListener('transitionend', onEnd); el.remove(); } };
+      el.addEventListener('transitionend', onEnd);
+    }
+    function clearTexts(){ textLayer.innerHTML=''; }
+    function showGifFresh(src){
+      const old = textLayer.querySelector(`img[data-key="${src}"]`); if(old) old.remove();
+      const el = document.createElement('img');
+      el.className='text-img'; el.dataset.key=src; el.alt=src;
+      el.src = src + '?t=' + Math.floor(performance.now());
+      textLayer.appendChild(el); requestAnimationFrame(()=> el.style.opacity='1');
+    }
+    function isOnBild1(){
+      const name = (base.currentSrc||base.src||'').split('/').pop().toLowerCase();
+      return name.startsWith('bild1');
+    }
+
+    /* ========= eye tracking (Bild4) ========= */
+    let bild4Timer=null, pupilsCenterTimer=null, pupilsFrozen=false;
+
+    function getEyesZoneRect(){
+      const box = getImageContentRect(base);
+      const ex = readVarNum('--eyes-x', 50);
+      const ey = readVarNum('--eyes-y', 42);
+      const ew = readVarNum('--eyes-w', 10);
+      const eh = readVarNum('--eyes-h', 15);
+      const cx = box.left + (ex/100)*box.w;
+      const cy = box.top  + (ey/100)*box.h;
+      const rw = (ew/100)*box.w;
+      const rh = (eh/100)*box.h;
+      return { left: cx - rw/2, top: cy - rh/2, right: cx + rw/2, bottom: cy + rh/2 };
+    }
+    function updatePupilsPosition(clientX, clientY){
+      if(phase !== Phase.Bild4 || pupilsFrozen) return;
+      const r = getEyesZoneRect();
+      const cx = (r.left + r.right) / 2;
+      const cy = (r.top  + r.bottom) / 2;
+      const rangeX = (r.right - r.left) / 2;
+      const rangeY = (r.bottom - r.top) / 2;
+      const rawX = clamp(clientX - cx, -rangeX, rangeX);
+      const rawY = clamp(clientY - cy, -rangeY, rangeY);
+      const factor = readVarNum('--pupil-move-scale', 0.35);
+      pupils.style.setProperty('--pupil-offset-x', (rawX*factor) + 'px');
+      pupils.style.setProperty('--pupil-offset-y', (rawY*factor) + 'px');
+    }
+    window.addEventListener('pointermove', e=>updatePupilsPosition(e.clientX, e.clientY), {passive:true});
+    window.addEventListener('mousemove',   e=>updatePupilsPosition(e.clientX, e.clientY), {passive:true});
+    window.addEventListener('touchmove', (e)=>{
+      if(!e.touches || !e.touches.length) return;
+      const t = e.touches[0];
+      updatePupilsPosition(t.clientX, t.clientY);
+    }, {passive:true});
+
+    /* ========= click-rotate & scroll (unchanged) ========= */
+    let stoneToggle=false, clickSteps=0;
+    let text5Shown=false, text6Shown=false, text66Shown=false, text77Shown=false, text7Shown=false;
+
+    document.addEventListener('click', ()=>{
+      if (phase === Phase.ClickRotate) {
+        stoneToggle = !stoneToggle;
+        stein.src = stoneToggle ? 'stein2.png' : 'stein1.png';
+        showStein(true);
+        clickSteps += 1;
+        const deg = (clickSteps * 15) % 360;
+        setArtifactTransform(deg, 0);
+
+        if(!text5Shown && clickSteps >= 12){ showText('text5.png'); text5Shown=true; }
+
+        if (clickSteps % 24 === 0) {
+          showStein(false);
+          hideText('text4.png'); hideText('text5.png');
+
+          const prev = artifact.style.transition;
+          artifact.style.transition = 'transform 360ms ease, opacity var(--transition-med), top var(--transition-slow)';
+          setArtifact('bild7.png');
+          requestAnimationFrame(()=> setArtifactTransform(0, -20));
+          const restore = (e)=>{
+            if(e.propertyName==='transform'){
+              artifact.style.transition = prev || 'transform var(--transition-fast), opacity var(--transition-med), top var(--transition-slow)';
+              artifact.removeEventListener('transitionend', restore);
+            }
+          };
+          artifact.addEventListener('transitionend', restore);
+
+          phase = Phase.ScrollSeq;
+          scrollSpace.style.height = '8000px';
+          scrollStartY = window.scrollY;
+          intervalIndex = 0;
+
+          if(!text6Shown){ showText('text6.png'); text6Shown=true; }
+        }
+      }
+    });
+
+    const FRAME_ORDER = ['bild7.png','bild8.png','bild9.png','bild10.png'];
+    const SCROLL_DEG_PER_PX = 0.25;
+    let scrollStartY=0, intervalIndex=0;
+
+    window.addEventListener('scroll', ()=>{
+      if(phase !== Phase.ScrollSeq) return;
+      const deltaPx = Math.max(0, window.scrollY - scrollStartY);
+      const totalDeg = deltaPx * SCROLL_DEG_PER_PX;
+
+      let localIndex = Math.min(3, Math.floor(totalDeg / 120));
+      let localDeg   = totalDeg - (localIndex * 120);
+
+      if(localIndex !== intervalIndex){
+        intervalIndex = localIndex;
+        const nextSrc = FRAME_ORDER[Math.min(intervalIndex, FRAME_ORDER.length-1)];
+        setArtifact(nextSrc);
+
+        if(nextSrc==='bild8.png'  && !text66Shown){ showText('text66.png'); text66Shown=true; }
+        if(nextSrc==='bild9.png'  && !text77Shown){ showText('text77.png'); text77Shown=true; }
+        if(nextSrc==='bild10.png' && !text7Shown ){ showText('text7.png');   text7Shown=true; }
+      }
+
+      const baseline = -20 + (Math.min(intervalIndex, 3) * 10);
+      const tY = baseline + (clamp(localDeg / 120, 0, 1) * 10);
+
+      const absDeg = (intervalIndex * 120) + localDeg;
+      setArtifactTransform(absDeg, tY);
+
+      if(totalDeg >= 480 && !artifact.src.endsWith('bild11.png')){
+        setArtifact('bild11.png');
+      }
+      if(totalDeg >= 480){
+        const extraDown = (totalDeg - 480) / 2;
+        setArtifactTransform(absDeg, tY + extraDown);
+        if(tY + extraDown > 140){ enterBild12(); }
+      }
+    }, { passive:true });
+
+    function enterBild12(){
+      if(phase === Phase.Bild12) return;
+      phase = Phase.Bild12;
+
+      base.style.transition = 'none';
+      base.style.transform = 'translateY(100vh)';
+      base.style.opacity = 0;
+      setBase('bild12.gif');
+
+      requestAnimationFrame(()=>{
+        base.style.transition = 'transform 700ms ease, opacity 420ms ease';
+        base.style.opacity = 1;
+        base.style.transform = 'translateY(0)';
+        const cleanup = (e)=>{
+          if(e.propertyName === 'transform'){
+            base.style.transition = 'opacity 220ms ease';
+            base.style.transform = '';
+            base.removeEventListener('transitionend', cleanup);
+          }
+        };
+        base.addEventListener('transitionend', cleanup);
+      });
+
+      artifact.style.opacity = 0;
+      pupils.style.opacity = 0;
+
+      clearTexts();
+      showText('text8.png');
+
+      scrollSpace.style.height = '1200px';
+
+      hotSwitch.style.pointerEvents = 'auto';
+      hotCenter.style.pointerEvents = 'none';
+    }
+
+    /* ========= Hotspot behaviors + overlay trigger ========= */
+    function onBild1(){ return phase===Phase.Bild1 && isOnBild1(); }
+
+    hotSwitch.addEventListener('click', ()=>{
+      if (overlayActive) closeOverlay();
+
+      if(phase === Phase.Bild1){
+        setBaseWithFade('bild2.gif'); phase = Phase.Bild2;
+        hotCenter.style.pointerEvents = 'auto'; showText('text1.png');
+      } else if(phase === Phase.Bild12){
+        resetAll();
+      }
+    });
+
+    hotCenter.addEventListener('mouseenter', ()=>{
+      if (phase === Phase.Bild2) {
+        setBaseWithFade('bild3.gif'); phase = Phase.Bild3; showText('text2.png');
+      }
+    });
+    hotCenter.addEventListener('mouseleave', ()=>{
+      if (phase === Phase.Bild3 || phase === Phase.Bild2) {
+        setBaseWithFade('bild2.gif'); phase = Phase.Bild2;
+      }
+    });
+
+    hotCenter.addEventListener('click', ()=>{
+      if (overlayActive) closeOverlay();
+      if (phase === Phase.Bild3) {
+        hideText('text1.png'); hideText('text2.png');
+
+        setBaseWithFade('bild4.gif', ()=>{
+          if (phase === Phase.Bild4) { showGifFresh('text3.gif'); }
+        });
+
+        phase = Phase.Bild4;
+        showPupils(true);
+
+        if (bild4Timer) clearTimeout(bild4Timer);
+        if (pupilsCenterTimer) clearTimeout(pupilsCenterTimer);
+
+        pupilsFrozen = false;
+        pupilsCenterTimer = setTimeout(()=>{
+          pupilsFrozen = true;
+          pupils.style.setProperty('--pupil-offset-x','0px');
+          pupils.style.setProperty('--pupil-offset-y','0px');
+        }, 4000);
+
+        bild4Timer = setTimeout(()=>{
+          hideText('text3.gif'); showPupils(false); base.style.opacity = 0;
+          stoneToggle = false; stein.src = 'stein1.png'; showStein(true);
+          setArtifact('bild6.png'); showArtifact(true); setArtifactTransform(0, 0);
+          phase = Phase.ClickRotate; showText('text4.png');
+        }, 5000);
+      }
+    });
+
+    function resetAll(){
+      try { if (bild4Timer) { clearTimeout(bild4Timer); bild4Timer=null; } } catch(_){}
+      try { if (pupilsCenterTimer) { clearTimeout(pupilsCenterTimer); pupilsCenterTimer=null; } } catch(_){}
+      pupilsFrozen=false;
+
+      phase = Phase.Bild1;
+      stage.style.opacity = 1;
+      setBase('bild1.png');
+
+      closeOverlay();
+
+      hotSwitch.style.pointerEvents = 'auto';
+      hotCenter.style.pointerEvents = 'none';
+
+      showPupils(false);
+      pupils.style.setProperty('--pupil-offset-x','0px');
+      pupils.style.setProperty('--pupil-offset-y','0px');
+
+      stoneToggle=false; stein.src='stein1.png'; showStein(false);
+      setArtifact(''); showArtifact(false);
+      artifact.style.top='50%';
+      setArtifactTransform(0,0);
+      artifact.style.transition = 'transform var(--transition-fast), opacity var(--transition-med), top var(--transition-slow)';
+
+      clearTexts();
+      text5Shown=false; text6Shown=false; text66Shown=false; text77Shown=false; text7Shown=false;
+
+      clickSteps=0;
+      scrollSpace.style.height='0px';
+      scrollStartY=0; intervalIndex=0;
+
+      try { window.scrollTo({ top:0, behavior:'auto' }); } catch(_){}
+      layoutHotspots();
+    }
+
+    /* Boot */
+    if (base.complete) layoutHotspots(); else base.addEventListener('load', layoutHotspots);
+    resetAll();
+
+    /* ========= Open Website 2 from Bild1 & SCROLL BRIDGE ========= */
+
+    // Open on any initial gesture on Bild1
+    window.addEventListener('wheel', (e)=>{
+      if (!overlayActive && onBild1()) openOverlay();
+
+      // Bridge scrolling into the iframe when overlay is open
+      if (overlayActive){
+        e.preventDefault();
+        site2frame.contentWindow?.postMessage({ type:'site2-nudge', delta: e.deltaY }, '*');
+      }
+    }, { passive:false });
+
+    window.addEventListener('keydown', (e)=>{
+      if (!onBild1()) return;
+      if (e.key==='Escape'){ closeOverlay(); return; }
+      if (!overlayActive && (e.key==='ArrowDown' || e.key==='s' || e.key==='S' || e.key==='PageDown' || e.key===' ')){
+        openOverlay();
+      }
+      if (overlayActive){
+        const step = (e.shiftKey ? 160 : 70);
+        if(e.key==='ArrowDown'||e.key==='s'||e.key==='S'||e.key==='PageDown'||e.key===' '){
+          site2frame.contentWindow?.postMessage({ type:'site2-nudge', delta: step }, '*');
+        }else if(e.key==='ArrowUp'||e.key==='w'||e.key==='W'||e.key==='PageUp'){
+          site2frame.contentWindow?.postMessage({ type:'site2-nudge', delta: -step }, '*');
+        }
+      }
+    });
+
+    // Touch bridge (iPad)
+    let bridgeTouchY=null;
+    window.addEventListener('touchstart', (e)=>{
+      if (!overlayActive && onBild1()) openOverlay();
+      if (e.touches && e.touches.length){ bridgeTouchY = e.touches[0].clientY; }
+    }, {passive:true});
+
+    window.addEventListener('touchmove', (e)=>{
+      if (!overlayActive && onBild1()) openOverlay();
+      if (!overlayActive || bridgeTouchY==null) return;
+
+      const y = e.touches[0].clientY;
+      const dy = bridgeTouchY - y; // swipe up → forward
+      bridgeTouchY = y;
+
+      // amplify a bit for touch feel
+      site2frame.contentWindow?.postMessage({ type:'site2-nudge', delta: dy * 2.0 }, '*');
+      e.preventDefault();
+    }, {passive:false});
+
+    window.addEventListener('touchend', ()=>{ bridgeTouchY=null; }, {passive:true});
+
+    // iframe → parent (auto-close if scrolled back to top)
+    window.addEventListener('message', (ev)=>{
+      const data = ev.data || {};
+      if (data.type === 'site2-progress'){
+        if (overlayActive && data.virtual <= 0.5){ closeOverlay(); }
+      } else if (data.type === 'site2-exit'){
+        closeOverlay();
+      }
+    });
+  </script>
+</body>
+</html>
