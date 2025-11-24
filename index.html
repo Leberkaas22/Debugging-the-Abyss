@@ -3,176 +3,86 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Suomi — Combined</title>
+  <title>Debugging the Abyss</title>
   <style>
     :root{
-      /* Website One vars */
-      --bg: #000;
-      --transition-fast: 180ms ease;
-      --transition-med: 420ms ease;
-      --transition-slow: 800ms ease;
+      --bg:#000;
+      --transition-fast:180ms ease;
+      --transition-med:420ms ease;
+      --transition-slow:800ms ease;
 
       /* Hotspot geometry (viewport %) */
-      --center-x: 50%; --center-y: 50%; --center-w: 20%; --center-h: 35%;
-      /* Lightswitch hotspot to the LEFT of the center hotspot */
-      --switch-w: 6%;  --switch-h: 25%;
-      --switch-gap: 3%;
-      --switch-x: calc(var(--center-x) - ((var(--center-w) * 0.5) + (var(--switch-w) * 0.5) + var(--switch-gap)));
-      --switch-y: 50%;
+      --center-x:50%; --center-y:50%; --center-w:20%; --center-h:35%;
+      --switch-w:6%; --switch-h:25%;
+      --switch-gap:3%;
+      --switch-x:calc(var(--center-x) - ((var(--center-w) * 0.5) + (var(--switch-w) * 0.5) + var(--switch-gap)));
+      --switch-y:50%;
 
       /* Eyes zone for pupils on bild4 */
-      --eyes-x: 50%; --eyes-y: 42%; --eyes-w: 10%; --eyes-h: 15%;
-      --pupil-move-scale: 0.35;
-
-      /* Website Two vars (overlay) */
-      --col-gap: clamp(6px, .8vw, 12px);
-      --imgColW: min(40vw, 620px);
-      --textColW: min(33vw, 520px);
-      --textMax: 38ch;
-      --headingMax: 22ch;
-      --fg: #fff;
-      --muted: #cfcfcf;
+      --eyes-x:50%; --eyes-y:42%; --eyes-w:10%; --eyes-h:15%;
+      --pupil-move-scale:0.35;
     }
 
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body { height: 100%; }
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: #fff;
-      overflow-x: hidden;
-      user-select: none;
-      -webkit-user-select: none;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
+    *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    html,body{ height:100%; }
+    body{
+      margin:0; background:var(--bg); color:#fff; overflow-x:hidden;
+      user-select:none; -webkit-user-select:none;
+      -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
     }
-    ::selection { background: transparent; }
+    ::selection{ background:transparent; }
+    img,.hotspot,#stage{ -webkit-user-drag:none; user-drag:none; user-select:none; -webkit-user-select:none; }
+    :focus,.hotspot:focus,.hotspot:active{ outline:none; }
 
-    img, .hotspot, #stage, #viewport2 {
-      -webkit-user-drag: none;
-      user-drag: none;
-      user-select: none;
-      -webkit-user-select: none;
+    /* ===== Website One (original) ===== */
+    #stage{
+      position:fixed; inset:0; display:grid; place-items:center;
+      pointer-events:none; z-index:1; transition:opacity 260ms ease;
     }
-    :focus, .hotspot:focus, .hotspot:active { outline: none; }
+    .img{
+      position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+      pointer-events:none; will-change:transform,opacity; transition:opacity 220ms ease;
+    }
+    .hotspot{
+      position:fixed; pointer-events:auto; cursor:pointer; z-index:10;
+      background:transparent; border:none; outline:none;
+    }
+    #hotadvance{ display:none !important; }
 
-    /* ================= Website One (original) ================= */
-    #stage {
-      position: fixed;
-      inset: 0;
-      display: grid;
-      place-items: center;
-      pointer-events: none;           /* hotspots are separate elements */
-      z-index: 1;                     /* under overlay (z:2) and hotspots (z:10) */
-      transition: opacity 280ms ease; /* we fade this out when overlay is active */
+    #text-layer{ position:absolute; inset:0; z-index:6; pointer-events:none; }
+    #text-layer .text-img{
+      position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+      opacity:0; transition:opacity var(--transition-med); will-change:opacity;
     }
-    #base { z-index: 1; }
-    .img {
-      position: absolute; inset: 0; width: 100%; height: 100%;
-      object-fit: cover; pointer-events: none; will-change: transform, opacity;
-      transition: opacity 220ms ease;
+    #pupils{
+      position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+      pointer-events:none; opacity:0; transition:transform 500ms ease, opacity var(--transition-med);
+      will-change:transform; z-index:5;
+      transform:translate(var(--pupil-offset-x,0px), var(--pupil-offset-y,0px));
     }
+    #stein{ position:absolute; inset:0; opacity:0; transition:opacity var(--transition-med); pointer-events:none; z-index:4; }
+    #artifact{
+      position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) rotate(0deg);
+      transform-origin:50% 50%; width:100%; height:100%; opacity:0;
+      transition:transform var(--transition-fast), opacity var(--transition-med), top var(--transition-slow);
+      pointer-events:none; z-index:3;
+    }
+    #scroll-space{ position:relative; width:100%; height:0; }
 
-    /* Hotspots */
-    .hotspot {
-      position: fixed; pointer-events: auto; cursor: pointer;
-      z-index: 10; background: transparent; border: none; outline: none;
+    /* ===== Website Two overlay (iframe) ===== */
+    #overlay2{
+      position:fixed; inset:0; background:transparent;
+      opacity:0; pointer-events:none; z-index:20; transition:opacity 600ms ease;
     }
-    #hotadvance { display: none !important; }
-
-    /* Pupils / stone / artifact / text-layer (unchanged) */
-    #pupils {
-      position: absolute; inset: 0; width: 100%; height: 100%;
-      object-fit: cover; pointer-events: none; opacity: 0;
-      transition: transform 500ms ease, opacity var(--transition-med);
-      will-change: transform; z-index: 5;
-      transform: translate(var(--pupil-offset-x, 0px), var(--pupil-offset-y, 0px));
-    }
-    #stein {
-      position: absolute; inset: 0; opacity: 0;
-      transition: opacity var(--transition-med); pointer-events: none; z-index: 4;
-    }
-    #artifact {
-      position: fixed; top: 50%; left: 50%;
-      transform: translate(-50%, -50%) rotate(0deg);
-      transform-origin: 50% 50%;
-      width: 100%; height: 100%;
-      opacity: 0; transition: transform var(--transition-fast), opacity var(--transition-med), top var(--transition-slow);
-      pointer-events: none; z-index: 3;
-    }
-    #text-layer { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
-    #text-layer .text-img {
-      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
-      opacity: 0; transition: opacity var(--transition-med); will-change: opacity;
-    }
-
-    #scroll-space { position: relative; width: 100%; height: 0px; }
-
-    /* ================= Website Two overlay (hidden until you scroll on bild1) ================= */
-    #viewport2 {
-      position: fixed; inset: 0; height: 100vh; width: 100vw;
-      perspective: 1000px; z-index: 2;
-      opacity: 0; pointer-events: none;     /* we don't need clicks on overlay; keep hotspots on top */
-      transition: opacity 280ms ease;
-    }
-    #viewport2.active { opacity: 1; }       /* turns on with scroll on bild1 */
-
-    .scene2 { position: relative; width:100%; height:100%; transform-style: preserve-3d; }
-
-    .row{
-      position: absolute; left:0; right:0; top:50%; margin-inline:auto;
-      display: grid;
-      grid-template-columns: minmax(0, var(--imgColW)) minmax(0, var(--textColW));
-      align-items: center; justify-content: center;
-      column-gap: var(--col-gap);
-      width: min(92vw, 1600px);
-      transform-style: preserve-3d;
-      will-change: transform, opacity, filter;
-      transform: translate3d(0, -50%, 0) scale(0.9);
-      padding: 0 20px; isolation: isolate;
-    }
-    .row.compact{
-      --col-gap: clamp(4px, .6vw, 10px);
-      --imgColW: min(36vw, 560px);
-      --textColW: min(30vw, 480px);
-    }
-    .row:nth-child(even) .alpha{ order:2; }
-    .row:nth-child(even) .beta { order:1; }
-
-    .alpha{ position: relative; z-index: 1; }
-    .alpha img{
-      width: 100%; height: auto; max-height: 68vh; object-fit: contain; display: block;
-      filter: grayscale(100%); transition: opacity 200ms linear; pointer-events: none;
-    }
-    .beta{ position: relative; z-index: 5; max-width: var(--textColW); }
-    .beta h2{
-      margin: 0 0 .35em 0; font-weight: 700;
-      font-size: clamp(1.05rem, 1.6vw + .55rem, 1.75rem);
-      line-height: 1.15; max-width: var(--headingMax);
-      text-wrap: balance; hyphens: none; -webkit-hyphens: none; overflow-wrap: break-word;
-    }
-    .beta p{
-      margin: 0; color: var(--muted);
-      font-size: clamp(.95rem, .65vw + .7rem, 1.02rem);
-      max-width: var(--textMax); text-wrap: pretty;
-      hyphens: none; -webkit-hyphens: none; overflow-wrap: break-word; word-break: normal;
-    }
-
-    @media (max-width: 980px){
-      :root{ --textMax: 28ch; --headingMax: 20ch; }
-      .row{
-        grid-template-columns: 1fr; row-gap: 14px; column-gap: 0;
-        justify-content: center; text-align: left;
-      }
-      .alpha img{ max-height: 56vh; }
-      .beta{ max-width: 92vw; }
-    }
+    #overlay2.active{ opacity:1; pointer-events:auto; }
+    #site2frame{ width:100%; height:100%; border:0; display:block; }
   </style>
 </head>
 <body>
-  <!-- ================= Website One (unchanged DOM) ================= -->
+  <!-- Website One -->
   <div id="stage">
-    <img id="base" class="img" alt="scene" src="bild1.png" />
+    <!-- start.gif instead of bild1.png -->
+    <img id="base" class="img" alt="scene" src="start.gif" />
     <img id="stein" class="img" alt="stein" src="stein1.png" />
     <img id="artifact" class="img" alt="artifact" src="" />
     <img id="pupils" alt="pupils" src="bild5.png" />
@@ -186,116 +96,48 @@
 
   <div id="scroll-space"></div>
 
-  <!-- ================= Website Two overlay (only visible while scrolling on bild1) ================= -->
-  <div id="viewport2" aria-hidden="true">
-    <div class="scene2" id="scene2">
-      <!-- Your sections from Website Two -->
-      <section class="row" data-z="-9000">
-        <figure class="alpha">
-          <img src="/Users/lea/Desktop/Y3/Suomi/Epi/bild117.gif" alt="startled" />
-        </figure>
-        <div class="beta">
-          <h2>It really seems like that if we try to cognize what makes reality go round we get reminded of that the Human Experience is a lot about being confronted about our limits, and how often there’s nothing we can do about these.</h2>
-          <p>The future seems to hold possibilities of that we might grow beyond our biological bodies. Following that progress, going endlessly further could quickly be the same as falling endlessly down.</p>
-        </div>
-      </section>
-
-      <section class="row" data-z="-7500">
-        <figure class="alpha">
-          <img src="/Users/lea/Desktop/Y3/Suomi/Epi/bug.png" alt="startled" />
-        </figure>
-        <div class="beta">
-          <h2>The Bug</h2>
-          <p>The Idea coming from the fact that sometimes when I get into an emotionally overwhelmed phase I can develop an incredible fear of missing out that I will never know or experience everything there is or ever cognise the absolute.</p>
-        </div>
-      </section>
-
-      <section class="row compact" data-z="-6250">
-        <figure class="alpha">
-          <img src="/Users/lea/Desktop/Y3/Suomi/Epi/story.png" alt="story" />
-        </figure>
-        <div class="beta">
-          <h2>AAAAAAAAAAAAAAAAAA</h2>
-          <p>To achieve this I worked with the framework of a story narrative since navigating this topic can become really challenging really fast.</p>
-        </div>
-      </section>
-
-      <section class="row" data-z="-5000">
-        <figure class="alpha">
-          <img src="/Users/lea/Desktop/Y3/Suomi/Epi/camus.png" alt="camus" />
-        </figure>
-        <div class="beta">
-          <h2>Philosophical inspiration</h2>
-          <p>Inspired by Albert Camus’ “The Myth of Sisyphus”, I wanted to illustrate this seemingly contradictory aspect of the human lived experience.</p>
-        </div>
-      </section>
-
-      <section class="row compact" data-z="-3750">
-        <figure class="alpha">
-          <img src="/Users/lea/Desktop/Y3/Suomi/Epi/bild417.gif" alt="character" />
-        </figure>
-        <div class="beta">
-          <h2>Character</h2>
-          <p>For the story I chose to make it a startled and confused character that goes through this dilemma, debugging it by thinking about it and recognising molding his own way of thinking.</p>
-        </div>
-      </section>
-
-      <section class="row" data-z="-2500">
-        <figure class="alpha">
-          <img src="/Users/lea/Desktop/Y3/Suomi/Epi/bild618.gif" alt="animation" />
-        </figure>
-        <div class="beta">
-          <h2>Animating</h2>
-          <p>After some sketches I drew and animated the images.</p>
-        </div>
-      </section>
-
-      <section class="row compact" data-z="-1250">
-        <figure class="alpha">
-          <img src="/Users/lea/Desktop/Y3/Suomi/Epi/code.png" alt="code" />
-        </figure>
-        <div class="beta">
-          <h2>Coding</h2>
-          <p>With the help of LLMs I built the basic framework and then finessed the details, order and arrangement on my own.</p>
-        </div>
-      </section>
-
-      <section class="row" data-z="0">
-        <figure class="alpha">
-          <img src="/Users/lea/Desktop/Y3/Suomi/Epi/inspct.png" alt="inspect" />
-        </figure>
-        <div class="beta">
-          <h2>Finishing touches</h2>
-          <p>After having Version 0 prototype I added further animations to the typography and adjusted the ending a little bit to comment on the meta-narrative I used.</p>
-        </div>
-      </section>
-    </div>
+  <!-- Website Two (isolated) -->
+  <div id="overlay2" aria-hidden="true">
+    <iframe id="site2frame" src="site2.html"></iframe>
   </div>
 
   <script>
-    /* ============== helpers ============== */
-    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-    const lerp = (a,b,t)=>a+(b-a)*t;
-    const smoothstep = (t)=> t*t*(3 - 2*t);
-    const $ = id => document.getElementById(id);
+    /* ========= tiny helpers ========= */
+    const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+    const byId = (id)=>document.getElementById(id);
 
-    /* ============== Website One refs ============== */
-    const stage = $('stage');
-    const base = $('base');
-    const pupils = $('pupils');
-    const stein = $('stein');
-    const artifact = $('artifact');
-    const textLayer  = $('text-layer');
+    /* ========= Website One refs ========= */
+    const stage = byId('stage');
+    const base = byId('base');
+    const pupils = byId('pupils');
+    const stein = byId('stein');
+    const artifact = byId('artifact');
+    const textLayer = byId('text-layer');
 
-    const hotSwitch = $('hotswitch');
-    const hotCenter = $('hotcenter');
-    const hotAdvance = $('hotadvance');
-    const scrollSpace = $('scroll-space');
+    const hotSwitch = byId('hotswitch');
+    const hotCenter = byId('hotcenter');
+    const hotAdvance = byId('hotadvance');
+    const scrollSpace = byId('scroll-space');
 
-    /* ===== original Website One logic (kept) ===== */
-    let bild4Timer = null;
-    let pupilsCenterTimer = null;
-    let pupilsFrozen = false;
+    /* ========= Overlay (Website Two) refs ========= */
+    const overlay2 = byId('overlay2');
+    const site2frame = byId('site2frame');
+    let overlayActive = false;
+
+    function openOverlay(){
+      if (overlayActive) return;
+      overlayActive = true;
+      overlay2.classList.add('active');
+      stage.style.opacity = 0; // hide website 1 layer
+      site2frame.contentWindow?.postMessage({type:'site2-reset'}, '*');
+    }
+    function closeOverlay(){
+      if (!overlayActive) return;
+      overlayActive = false;
+      overlay2.classList.remove('active');
+      stage.style.opacity = 1; // show website 1 layer
+      site2frame.contentWindow?.postMessage({type:'site2-reset'}, '*');
+    }
 
     function applyHotspotRect(el, cxVar, cyVar, wVar, hVar){
       el.style.left = `calc(var(${cxVar}) - var(${wVar})/2)`;
@@ -309,32 +151,57 @@
     }
     window.addEventListener('resize', updateHotspots);
 
+    /* ========= Audio helpers ========= */
+    const sounds = {};
+
+    function loadSound(key, src){
+      try{
+        const audio = new Audio(src);
+        audio.preload = 'auto';
+        sounds[key] = audio;
+      } catch(_){}
+    }
+
+    function playSound(key){
+      const base = sounds[key];
+      if(!base) return;
+      try{
+        if (key === 'steen') {
+          // SPECIAL: allow overlapping steen sounds, always play fully
+          const a = base.cloneNode();
+          a.play().catch(()=>{});
+        } else {
+          // default behavior: restart same audio
+          base.currentTime = 0;
+          base.play().catch(()=>{});
+        }
+      } catch(_){}
+    }
+
+    // preload sounds
+    loadSound('licht', 'licht.mp3');    // light switch
+    loadSound('tweek', 'tweek.mp3');    // hover variant 1
+    loadSound('tweek2', 'tweek2.mp3');  // hover variant 2
+    loadSound('woosh', 'woosh.mp3');    // scroll sequence here (if you keep it)
+    loadSound('steen', 'steen.mp3');    // clicking stein1/stein2
+
+    /* ========= Website One state ========= */
     const Phase = {
-      Bild1: 'bild1',
-      Bild2: 'bild2',
-      Bild3: 'bild3',
-      Bild4: 'bild4',
-      ClickRotate: 'click-rotate',
-      ScrollSeq: 'scroll-seq',
-      Bild12: 'bild12'
+      Bild1:'bild1', Bild2:'bild2', Bild3:'bild3', Bild4:'bild4',
+      ClickRotate:'click-rotate', ScrollSeq:'scroll-seq', Bild12:'bild12'
     };
     let phase = Phase.Bild1;
 
     function setBase(src){ base.src = src; }
     function setBaseWithFade(src, onVisible){
-      if((base.currentSrc || base.src || '').endsWith(src)){
-        stage.style.opacity = 1;
-        if (typeof onVisible === 'function') onVisible();
-        return;
-      }
+      const cur = (base.currentSrc||base.src||'').split('/').pop();
+      if (cur === src){ stage.style.opacity = 1; onVisible && onVisible(); return; }
       base.style.opacity = 0;
       let done = false;
       const finish = ()=>{
-        if(done) return; done = true;
-        requestAnimationFrame(()=>{
-          base.style.opacity = 1;
-          if (typeof onVisible === 'function') onVisible();
-        });
+        if(done) return;
+        done = true;
+        requestAnimationFrame(()=>{ base.style.opacity=1; onVisible&&onVisible(); });
       };
       const pre = new Image();
       pre.onload = ()=>{ base.src = src; finish(); };
@@ -342,22 +209,19 @@
       pre.src = src;
       setTimeout(()=>{ if(!done){ base.src = src; finish(); } }, 900);
     }
-
-    function showPupils(b){ pupils.style.opacity = b ? '1':'0'; }
-    function showStein(b){ stein.style.opacity = b ? '1':'0'; }
-    function showArtifact(b){ artifact.style.opacity = b ? '1':'0'; }
+    function showPupils(b){ pupils.style.opacity = b?'1':'0'; }
+    function showStein(b){ stein.style.opacity = b?'1':'0'; }
+    function showArtifact(b){ artifact.style.opacity = b?'1':'0'; }
     function setArtifact(src){ if(src) artifact.src = src; }
     function setArtifactTransform(deg, translateYvh){
       const tY = (translateYvh ?? 0);
       artifact.style.transform = `translate(-50%, -50%) translateY(${tY}vh) rotate(${deg}deg)`;
     }
-
     function ensureTextEl(src){
       let el = textLayer.querySelector(`img[data-key="${src}"]`);
       if(!el){
         el = document.createElement('img');
-        el.className = 'text-img';
-        el.dataset.key = src; el.alt = src;
+        el.className='text-img'; el.dataset.key=src; el.alt=src;
         textLayer.appendChild(el);
       }
       return el;
@@ -365,35 +229,43 @@
     function showText(src){
       const el = ensureTextEl(src);
       if(!el.getAttribute('src')) el.src = src;
-      requestAnimationFrame(()=> el.style.opacity = '1');
+      requestAnimationFrame(()=> el.style.opacity='1');
     }
     function hideText(src){
       const el = textLayer.querySelector(`img[data-key="${src}"]`);
       if(!el) return;
       el.style.opacity = '0';
       const onEnd = (e)=>{
-        if(e.propertyName === 'opacity'){
+        if(e.propertyName==='opacity'){
           el.removeEventListener('transitionend', onEnd);
-          if(el.parentNode === textLayer) textLayer.removeChild(el);
+          el.remove();
         }
       };
       el.addEventListener('transitionend', onEnd);
     }
-    function clearTexts(){ textLayer.innerHTML = ''; }
+    function clearTexts(){ textLayer.innerHTML=''; }
     function showGifFresh(src){
       const old = textLayer.querySelector(`img[data-key="${src}"]`);
       if(old) old.remove();
       const el = document.createElement('img');
-      el.className = 'text-img';
-      el.dataset.key = src; el.alt = src;
+      el.className='text-img'; el.dataset.key=src; el.alt=src;
       el.src = src + '?t=' + Math.floor(performance.now());
       textLayer.appendChild(el);
-      requestAnimationFrame(()=> el.style.opacity = '1');
+      requestAnimationFrame(()=> el.style.opacity='1');
     }
+
+    function isOnBild1(){
+      const name = (base.currentSrc||base.src||'').split('/').pop().toLowerCase();
+      // treat start.gif as the initial bild1 state
+      return name.startsWith('start') || name.startsWith('bild1');
+    }
+
+    /* ===== Eye tracking (Bild4) ===== */
+    let bild4Timer=null, pupilsCenterTimer=null, pupilsFrozen=false;
 
     function getEyesZoneRect(){
       const s = getComputedStyle(document.documentElement);
-      const vw = innerWidth, vh = innerHeight;
+      const vw = window.innerWidth, vh = window.innerHeight;
       const cx = parseFloat(s.getPropertyValue('--eyes-x'))/100 * vw;
       const cy = parseFloat(s.getPropertyValue('--eyes-y'))/100 * vh;
       const w  = parseFloat(s.getPropertyValue('--eyes-w'))/100 * vw;
@@ -401,56 +273,55 @@
       return { left: cx - w/2, top: cy - h/2, right: cx + w/2, bottom: cy + h/2 };
     }
     function updatePupilsPosition(clientX, clientY){
+      if(phase !== Phase.Bild4 || pupilsFrozen) return;
       const r = getEyesZoneRect();
       const cx = (r.left + r.right) / 2;
       const cy = (r.top  + r.bottom) / 2;
       const rangeX = (r.right - r.left) / 2;
       const rangeY = (r.bottom - r.top) / 2;
-      const rawX = clamp(clientX - cx, -rangeX, rangeX);
-      const rawY = clamp(clientY - cy, -rangeY, rangeY);
+      const rawX = Math.max(-rangeX, Math.min(rangeX, clientX - cx));
+      const rawY = Math.max(-rangeY, Math.min(rangeY, clientY - cy));
       const factor = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pupil-move-scale')) || 0.35;
       pupils.style.setProperty('--pupil-offset-x', (rawX*factor) + 'px');
       pupils.style.setProperty('--pupil-offset-y', (rawY*factor) + 'px');
     }
-    window.addEventListener('mousemove', (e)=>{
-      if(phase === Phase.Bild4 && !pupilsFrozen){
-        updatePupilsPosition(e.clientX, e.clientY);
-      }
-    }, { passive: true });
+    window.addEventListener('pointermove', e=>updatePupilsPosition(e.clientX, e.clientY), {passive:true});
+    window.addEventListener('mousemove',   e=>updatePupilsPosition(e.clientX, e.clientY), {passive:true});
 
-    let stoneToggle = false;
-    let clickSteps = 0;
-    let text5Shown  = false;
-    let text6Shown  = false;
-    let text66Shown = false;
-    let text77Shown = false;
-    let text7Shown  = false;
+    /* ===== Website One click flow ===== */
+    let stoneToggle=false, clickSteps=0;
+    let text5Shown=false, text6Shown=false, text66Shown=false, text77Shown=false, text7Shown=false;
+    let tweekToggle=false; // toggles between tweek and tweek2
 
     document.addEventListener('click', ()=>{
       if (phase === Phase.ClickRotate) {
+        // sound for clicking stein1/stein2 (overlapping)
+        playSound('steen');
+
         stoneToggle = !stoneToggle;
         stein.src = stoneToggle ? 'stein2.png' : 'stein1.png';
         showStein(true);
-
         clickSteps += 1;
         const deg = (clickSteps * 15) % 360;
         setArtifactTransform(deg, 0);
 
         if(!text5Shown && clickSteps >= 12){
-          showText('text5.png'); text5Shown = true;
+          showText('text5.png');
+          text5Shown=true;
         }
 
         if (clickSteps % 24 === 0) {
           showStein(false);
-          hideText('text4.png'); hideText('text5.png');
+          hideText('text4.png');
+          hideText('text5.png');
 
-          const prevTransition = artifact.style.transition;
+          const prev = artifact.style.transition;
           artifact.style.transition = 'transform 360ms ease, opacity var(--transition-med), top var(--transition-slow)';
           setArtifact('bild7.png');
           requestAnimationFrame(()=> setArtifactTransform(0, -20));
           const restore = (e)=>{
-            if (e.propertyName === 'transform') {
-              artifact.style.transition = prevTransition || 'transform var(--transition-fast), opacity var(--transition-med), top var(--transition-slow)';
+            if(e.propertyName==='transform'){
+              artifact.style.transition = prev || 'transform var(--transition-fast), opacity var(--transition-med), top var(--transition-slow)';
               artifact.removeEventListener('transitionend', restore);
             }
           };
@@ -458,24 +329,24 @@
 
           phase = Phase.ScrollSeq;
           scrollSpace.style.height = '8000px';
-          scrollStartY = scrollY;
+          scrollStartY = window.scrollY;
           intervalIndex = 0;
 
-          if(!text6Shown){ showText('text6.png'); text6Shown = true; }
+          if(!text6Shown){
+            showText('text6.png');
+            text6Shown=true;
+          }
         }
       }
     });
 
-    /* Website One scroll sequence (unchanged) */
     const FRAME_ORDER = ['bild7.png','bild8.png','bild9.png','bild10.png'];
     const SCROLL_DEG_PER_PX = 0.25;
-
-    let scrollStartY = 0;
-    let intervalIndex = 0;
+    let scrollStartY=0, intervalIndex=0;
 
     window.addEventListener('scroll', ()=>{
       if(phase !== Phase.ScrollSeq) return;
-      const deltaPx = Math.max(0, scrollY - scrollStartY);
+      const deltaPx = Math.max(0, window.scrollY - scrollStartY);
       const totalDeg = deltaPx * SCROLL_DEG_PER_PX;
 
       let localIndex = Math.min(3, Math.floor(totalDeg / 120));
@@ -486,9 +357,12 @@
         const nextSrc = FRAME_ORDER[Math.min(intervalIndex, FRAME_ORDER.length-1)];
         setArtifact(nextSrc);
 
-        if(nextSrc === 'bild8.png'  && !text66Shown){ showText('text66.png'); text66Shown = true; }
-        if(nextSrc === 'bild9.png'  && !text77Shown){ showText('text77.png'); text77Shown = true; }
-        if(nextSrc === 'bild10.png' && !text7Shown ){ showText('text7.png');   text7Shown  = true; }
+        // sound after every section scrolled past (unchanged)
+        playSound('woosh');
+
+        if(nextSrc==='bild8.png'  && !text66Shown){ showText('text66.png'); text66Shown=true; }
+        if(nextSrc==='bild9.png'  && !text77Shown){ showText('text77.png'); text77Shown=true; }
+        if(nextSrc==='bild10.png' && !text7Shown ){ showText('text7.png');   text7Shown=true; }
       }
 
       const baseline = -20 + (Math.min(intervalIndex, 3) * 10);
@@ -503,12 +377,9 @@
       if(totalDeg >= 480){
         const extraDown = (totalDeg - 480) / 2;
         setArtifactTransform(absDeg, tY + extraDown);
-
-        if(tY + extraDown > 140){
-          enterBild12();
-        }
+        if(tY + extraDown > 140){ enterBild12(); }
       }
-    }, { passive: true });
+    }, { passive:true });
 
     function enterBild12(){
       if(phase === Phase.Bild12) return;
@@ -545,12 +416,16 @@
       hotCenter.style.pointerEvents = 'none';
     }
 
-    hotSwitch.addEventListener('click', ()=>{
-      if(phase === Phase.Bild1){
-        /* Leaving bild1 via lightswitch: ensure overlay is off & reset */
-        setSite2Active(false, true);
-        site2Virtual = 0;
+    /* Hotspot behaviors */
+    function onBild1(){ return phase===Phase.Bild1 && isOnBild1(); }
 
+    hotSwitch.addEventListener('click', ()=>{
+      // sound on light switch
+      playSound('licht');
+
+      if (overlayActive) closeOverlay();
+
+      if(phase === Phase.Bild1){
         setBaseWithFade('bild2.gif');
         phase = Phase.Bild2;
         hotCenter.style.pointerEvents = 'auto';
@@ -565,6 +440,10 @@
         setBaseWithFade('bild3.gif');
         phase = Phase.Bild3;
         showText('text2.png');
+
+        // sound when bild2 -> bild3 on hover, switching between tweek and tweek2
+        playSound(tweekToggle ? 'tweek2' : 'tweek');
+        tweekToggle = !tweekToggle;
       }
     });
 
@@ -576,12 +455,13 @@
     });
 
     hotCenter.addEventListener('click', ()=>{
+      if (overlayActive) closeOverlay();
       if (phase === Phase.Bild3) {
         hideText('text1.png');
         hideText('text2.png');
 
         setBaseWithFade('bild4.gif', ()=>{
-          if (phase === Phase.Bild4) showGifFresh('text3.gif');
+          if (phase === Phase.Bild4) { showGifFresh('text3.gif'); }
         });
 
         phase = Phase.Bild4;
@@ -616,17 +496,16 @@
     });
 
     function resetAll(){
-      try { if (bild4Timer) { clearTimeout(bild4Timer); bild4Timer = null; } } catch(_){}
-      try { if (pupilsCenterTimer) { clearTimeout(pupilsCenterTimer); pupilsCenterTimer = null; } } catch(_){}
-      pupilsFrozen = false;
+      try { if (bild4Timer) { clearTimeout(bild4Timer); bild4Timer=null; } } catch(_){}
+      try { if (pupilsCenterTimer) { clearTimeout(pupilsCenterTimer); pupilsCenterTimer=null; } } catch(_){}
+      pupilsFrozen=false;
 
       phase = Phase.Bild1;
       stage.style.opacity = 1;
-      setBase('bild1.png');
+      // reset to start.gif
+      setBase('start.gif');
 
-      /* also reset overlay */
-      setSite2Active(false, true);
-      site2Virtual = 0;
+      closeOverlay();
 
       hotSwitch.style.pointerEvents = 'auto';
       hotCenter.style.pointerEvents = 'none';
@@ -635,180 +514,57 @@
       pupils.style.setProperty('--pupil-offset-x','0px');
       pupils.style.setProperty('--pupil-offset-y','0px');
 
-      stoneToggle = false;
-      stein.src = 'stein1.png';
-      showStein(false);
-
-      setArtifact('');
-      showArtifact(false);
-      artifact.style.top = '50%';
-      setArtifactTransform(0, 0);
+      stoneToggle=false; stein.src='stein1.png'; showStein(false);
+      setArtifact(''); showArtifact(false);
+      artifact.style.top='50%';
+      setArtifactTransform(0,0);
       artifact.style.transition = 'transform var(--transition-fast), opacity var(--transition-med), top var(--transition-slow)';
 
       clearTexts();
-      text5Shown  = false;
-      text6Shown  = false;
-      text66Shown = false;
-      text77Shown = false;
-      text7Shown  = false;
+      text5Shown=false; text6Shown=false; text66Shown=false; text77Shown=false; text7Shown=false;
 
-      clickSteps = 0;
+      tweekToggle=false;
+      clickSteps=0;
+      scrollSpace.style.height='0px';
+      scrollStartY=0; intervalIndex=0;
 
-      scrollSpace.style.height = '0px';
-      scrollStartY = 0;
-      intervalIndex = 0;
-
-      try { window.scrollTo({ top: 0, behavior: 'auto' }); } catch(_){}
+      try { window.scrollTo({ top:0, behavior:'auto' }); } catch(_){}
       updateHotspots();
     }
 
-    /* Boot Website One */
+    // init
     resetAll();
 
-    /* ============== Website Two overlay engine ============== */
-    const viewport2 = $('viewport2');
-    const rows2 = [...document.querySelectorAll('#scene2 .row')];
-
-    // Overlay feel
-    const SITE2_SPEED = 0.55;
-    const SITE2_FRICTION = 0.10;
-
-    // Focus shaping
-    const CLEAR_RADIUS = 160;
-    const FALLOFF = 900;
-
-    // Visual bounds
-    const IMG_MIN_BLUR = 0.4, IMG_MAX_BLUR = 16, IMG_MIN_OPAC = 0.12;
-    const TXT_MAX_BLUR = 4.0, TXT_MIN_OPAC = 0.35;
-
-    // Virtual travel & camera
-    let site2Virtual = 0;
-    const zs2 = rows2.map(r => +r.dataset.z || 0);
-    const farthest2 = Math.min(...zs2);
-    const SITE2_MAX_TRAVEL = Math.abs(farthest2) + 1400;
-    let site2CameraZ = 0, site2TargetZ = 0;
-
-    // Overlay state + stage/hotspot toggling
-    let site2Active = false;
-    function toggleHotspots(enabled){
-      const pe = enabled ? 'auto' : 'none';
-      hotSwitch.style.pointerEvents = pe;
-      hotCenter.style.pointerEvents = pe;
-      hotAdvance.style.pointerEvents = pe;
-    }
-    function setSite2Active(on, immediate=false){
-      site2Active = !!on;
-      if (immediate) viewport2.style.transition = 'none';
-      viewport2.classList.toggle('active', site2Active);
-
-      // FADE BASE OUT when overlay is active (this is the key change)
-      stage.style.opacity = site2Active ? 0 : 1;
-
-      // Disable hotspots while overlay is visible; re-enable when closed
-      toggleHotspots(!site2Active);
-
-      if (immediate){
-        requestAnimationFrame(()=>{ viewport2.style.transition = 'opacity 280ms ease'; });
-      }
-    }
-
-    // Are we exactly on bild1 (support any path/extension like .webp)?
-    function isOnBild1(){
-      const src = base.currentSrc || base.src || base.getAttribute('src') || '';
-      const name = src.split('/').pop().toLowerCase();
-      return name.startsWith('bild1');
-    }
-    function site2Enabled(){ return phase === Phase.Bild1 && isOnBild1(); }
-
-    // Inputs (only act while on bild1)
-    window.addEventListener('wheel', (e)=>{
-      if(!site2Enabled()) return;
-      e.preventDefault();                                    // prevent page scroll
-      site2Virtual = clamp(site2Virtual + e.deltaY * SITE2_SPEED, 0, SITE2_MAX_TRAVEL);
-      setSite2Active(site2Virtual > 0.5);
-    }, { passive: false });
+    window.addEventListener('wheel', ()=>{
+      if (!overlayActive && onBild1()) openOverlay();
+    }, { passive:true });
 
     window.addEventListener('keydown', (e)=>{
-      if(!site2Enabled()) return;
-      if(e.key === 'Escape'){ site2Virtual = 0; setSite2Active(false); return; }
-      const step = (e.shiftKey ? 160 : 70);
-      if(e.key === 'ArrowDown' || e.key === 's' || e.key === 'S'){
-        site2Virtual = clamp(site2Virtual + step, 0, SITE2_MAX_TRAVEL);
-      } else if(e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W'){
-        site2Virtual = clamp(site2Virtual - step, 0, SITE2_MAX_TRAVEL);
-      } else { return; }
-      setSite2Active(site2Virtual > 0.5);
+      if (!onBild1()) return;
+      if (e.key==='Escape'){ closeOverlay(); return; }
+      if (!overlayActive && (e.key==='ArrowDown' || e.key==='s' || e.key==='S' || e.key==='PageDown' || e.key===' ')){
+        openOverlay();
+      }
     });
 
-    let site2TouchY = null;
-    window.addEventListener('touchstart', (e)=>{
-      if(!site2Enabled()) return;
-      site2TouchY = e.touches[0].clientY;
+    let touchY=null;
+    window.addEventListener('touchstart', e=>{
+      if (!onBild1() || overlayActive) return;
+      touchY = e.touches[0].clientY;
     }, {passive:true});
-    window.addEventListener('touchmove', (e)=>{
-      if(!site2Enabled() || site2TouchY == null) return;
-      const y = e.touches[0].clientY;
-      const dy = site2TouchY - y; // swipe up → forward
-      site2TouchY = y;
-      site2Virtual = clamp(site2Virtual + dy * 2.0, 0, SITE2_MAX_TRAVEL);
-      setSite2Active(site2Virtual > 0.5);
+    window.addEventListener('touchmove', ()=>{
+      if (!overlayActive && onBild1()) openOverlay();
     }, {passive:true});
-    window.addEventListener('touchend', ()=>{ site2TouchY = null; }, {passive:true});
+    window.addEventListener('touchend', ()=>{ touchY=null; }, {passive:true});
 
-    function site2Update(){
-      if(site2Enabled()){
-        site2TargetZ = -site2Virtual;
-        site2CameraZ = lerp(site2CameraZ, site2TargetZ, SITE2_FRICTION);
-
-        rows2.forEach((row)=>{
-          const baseZ = +row.dataset.z || 0;
-          const zRel = baseZ - site2CameraZ;
-
-          const nearFactor = Math.max(0, 1 - Math.min(1, Math.abs(zRel) / 2000));
-          const scale = 0.9 + nearFactor * 0.2;
-          row.style.transform = `translate3d(0, -50%, ${zRel}px) scale(${scale.toFixed(3)})`;
-
-          const d = Math.abs(zRel);
-          const t = (d <= CLEAR_RADIUS) ? 0 : Math.min(1, (d - CLEAR_RADIUS) / FALLOFF);
-          const e = smoothstep(t);
-
-          const img = row.querySelector('.alpha img');
-          if(img){
-            const imgOpacity = 1 - e * (1 - IMG_MIN_OPAC);
-            const imgBlur = IMG_MIN_BLUR + e * (IMG_MAX_BLUR - IMG_MIN_BLUR);
-            img.style.opacity = imgOpacity.toFixed(3);
-            img.style.filter = `grayscale(100%) blur(${imgBlur.toFixed(2)}px)`;
-          }
-
-          const text = row.querySelector('.beta');
-          if(text){
-            const textOpacity = 1 - e * (1 - TXT_MIN_OPAC);
-            const textBlur = e * TXT_MAX_BLUR;
-            text.style.opacity = textOpacity.toFixed(3);
-            text.style.filter = `blur(${textBlur.toFixed(2)}px)`;
-          }
-        });
-      } else {
-        // not on bild1 → force overlay off
-        if(site2Active){ setSite2Active(false); }
-        // ease camera back
-        site2TargetZ = 0;
-        site2CameraZ = lerp(site2CameraZ, site2TargetZ, 0.25);
+    window.addEventListener('message', (ev)=>{
+      const data = ev.data || {};
+      if (data.type === 'site2-progress'){
+        if (overlayActive && data.virtual <= 0.5){ closeOverlay(); }
+      } else if (data.type === 'site2-exit'){
+        closeOverlay();
       }
-      requestAnimationFrame(site2Update);
-    }
-
-    // Init transforms once
-    (function initSite2(){
-      const rows = document.querySelectorAll('#scene2 .row');
-      rows.forEach(r=>{
-        const baseZ = +r.dataset.z || 0;
-        r.style.transform = `translate3d(0, -50%, ${baseZ}px) scale(0.9)`;
-        const text = r.querySelector('.beta'); if(text){ text.style.opacity = 0.85; text.style.filter = 'blur(0px)'; }
-        const img = r.querySelector('.alpha img'); if(img){ img.style.opacity = 0.2; img.style.filter = 'grayscale(100%) blur(10px)'; }
-      });
-      requestAnimationFrame(site2Update);
-    })();
+    });
   </script>
 </body>
 </html>
